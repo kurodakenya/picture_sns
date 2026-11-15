@@ -228,6 +228,8 @@ Resources:
             TableName: !Ref PostsTable
         - DynamoDBReadPolicy:
             TableName: !Ref LikesTable
+        - S3ReadPolicy:
+            BucketName: !Ref ContentBucket
 
   GetMyPostsFunction:
     Type: AWS::Serverless::Function
@@ -246,6 +248,8 @@ Resources:
             TableName: !Ref PostsTable
         - DynamoDBReadPolicy:
             TableName: !Ref LikesTable
+        - S3ReadPolicy:
+            BucketName: !Ref ContentBucket
 
   DeletePostFunction:
     Type: AWS::Serverless::Function
