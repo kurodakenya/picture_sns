@@ -75,6 +75,7 @@ jobs:
             --stack-name ${{ env.STACK_NAME }} \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
+            --resolve-s3 \
             --capabilities CAPABILITY_IAM
         working-directory: infra
 
