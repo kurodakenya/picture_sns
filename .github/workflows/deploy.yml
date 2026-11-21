@@ -1,0 +1,131 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-1
+  STACK_NAME: picture-sns
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Run backend tests
+        run: npm test
+        working-directory: backend
+
+  deploy-backend:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      api-url: ${{ steps.outputs.outputs.api-url }}
+      user-pool-id: ${{ steps.outputs.outputs.user-pool-id }}
+      user-pool-client-id: ${{ steps.outputs.outputs.user-pool-client-id }}
+      bucket-name: ${{ steps.outputs.outputs.bucket-name }}
+      distribution-id: ${{ steps.outputs.outputs.distribution-id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - uses: aws-actions/setup-sam@v2
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build backend
+        run: npm ci && npm run build
+        working-directory: backend
+
+      - name: SAM build
+        run: sam build --template-file template.yaml
+        working-directory: infra
+
+      - name: SAM deploy
+        run: |
+          sam deploy \
+            --stack-name ${{ env.STACK_NAME }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM
+        working-directory: infra
+
+      - name: Get stack outputs
+        id: outputs
+        run: |
+          get_output() {
+            aws cloudformation describe-stacks \
+              --stack-name ${{ env.STACK_NAME }} \
+              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
+              --output text
+          }
+          echo "api-url=$(get_output ApiUrl)" >> "$GITHUB_OUTPUT"
+          echo "user-pool-id=$(get_output UserPoolId)" >> "$GITHUB_OUTPUT"
+          echo "user-pool-client-id=$(get_output UserPoolClientId)" >> "$GITHUB_OUTPUT"
+          echo "bucket-name=$(get_output ContentBucketName)" >> "$GITHUB_OUTPUT"
+          echo "distribution-id=$(get_output CloudFrontDistributionId)" >> "$GITHUB_OUTPUT"
+
+  deploy-frontend:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: ${{ needs.deploy-backend.outputs.api-url }}
+          NEXT_PUBLIC_USER_POOL_ID: ${{ needs.deploy-backend.outputs.user-pool-id }}
+          NEXT_PUBLIC_USER_POOL_CLIENT_ID: ${{ needs.deploy-backend.outputs.user-pool-client-id }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync out/ "s3://${{ needs.deploy-backend.outputs.bucket-name }}/frontend/" \
+            --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ needs.deploy-backend.outputs.distribution-id }} \
+            --paths "/*"
