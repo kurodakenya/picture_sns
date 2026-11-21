@@ -145,7 +145,7 @@ Resources:
             Resource: !Sub "${ContentBucket.Arn}/frontend/*"
             Condition:
               StringEquals:
-                AWS:SourceArn: !GetAtt CloudFrontDistribution.Arn
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
 
   # ==================
   # CloudFront
