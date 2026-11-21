@@ -139,6 +139,7 @@
 | 制限 | 1投稿につき1ユーザー1回 |
 | 取り消し | 可能 |
 | 重複防止 | Likesテーブルの postId × userId で制御 |
+| 整合性 | TransactWriteでLikes操作とPostsのlikeCount更新を1トランザクションで保証 |
 
 ### 4.4 削除機能
 
