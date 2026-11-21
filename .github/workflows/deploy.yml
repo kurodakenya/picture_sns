@@ -36,6 +36,9 @@ jobs:
   deploy-backend:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       api-url: ${{ steps.outputs.outputs.api-url }}
       user-pool-id: ${{ steps.outputs.outputs.user-pool-id }}
@@ -93,6 +96,9 @@ jobs:
   deploy-frontend:
     needs: deploy-backend
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
